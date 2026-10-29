@@ -120,6 +120,8 @@ type Deps struct {
 	// LLMModels lists the models the provider in cfg offers.
 	LLMModels func(ctx context.Context, cfg config.LLM) ([]LLMModel, error)
 	TestTrakt func(ctx context.Context, cfg config.Trakt) error
+	// TestArr probes one Starr instance; kind is "radarr" or "sonarr".
+	TestArr func(ctx context.Context, kind string, inst config.ArrInstance) (arrProbe any, err error)
 
 	// Dashboard status providers. Each non-nil provider appears on the
 	// dashboard and at /ether/api/status/{name}.
@@ -278,6 +280,7 @@ func (h *Handler) routes() *http.ServeMux {
 	api("GET /api/llm/providers", h.handleLLMProviders)
 	api("POST /api/llm/models", h.handleLLMModels)
 	api("POST /api/test/trakt", h.handleTestTrakt)
+	api("POST /api/test/arr", h.handleTestArr)
 
 	api("GET /api/dashboard", h.handleDashboard)
 	api("GET /api/system/load", h.handleSystemLoad)

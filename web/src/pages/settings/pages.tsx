@@ -235,6 +235,7 @@ const SERVICE_TABS = localized(
       { key: "trakt", label: "Trakt" },
       { key: "llm", label: t("Language model") },
       { key: "opensubtitles", label: "OpenSubtitles" },
+      { key: "arr", label: t("Arr") },
     ] as const,
 );
 
@@ -244,7 +245,7 @@ export function ServicesPage() {
     <DomainPage
       title={t("Integrations")}
       description={t(
-        "Every integration Ether uses and how it's doing. Trakt, a language model and OpenSubtitles are set up here.",
+        "Every integration Ether uses and how it's doing. Trakt, a language model, OpenSubtitles and Arr are set up here.",
       )}
       base="/services"
       tabs={SERVICE_TABS}

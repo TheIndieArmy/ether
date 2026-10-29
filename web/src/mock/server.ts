@@ -308,6 +308,12 @@ function defaultConfig(): EtherConfig {
     },
     trakt: { enabled: false, clientId: "", clientSecret: "" },
     openSubtitles: { enabled: false, apiKey: "", username: "", password: "" },
+    arr: {
+      enabled: false,
+      radarr: { url: "", apiKey: "", qualityProfileId: 0, rootFolderPath: "" },
+      sonarr: { url: "", apiKey: "", qualityProfileId: 0, rootFolderPath: "" },
+      pathMaps: null,
+    },
     llm: { enabled: true, provider: "ollama", baseUrl: "", apiKey: "", model: "llama3" },
     updates: {
       channel: "stable",

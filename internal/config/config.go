@@ -39,6 +39,7 @@ type Config struct {
 	Simkl         Simkl         `json:"simkl"`
 	OpenSubtitles OpenSubtitles `json:"openSubtitles"`
 	LLM           LLM           `json:"llm"`
+	Arr           Arr           `json:"arr"`
 	Updates       Updates       `json:"updates"`
 	Spike         Spike         `json:"spike"`
 	Downloads     Downloads     `json:"downloads"`
