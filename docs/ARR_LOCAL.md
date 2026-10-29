@@ -6,7 +6,7 @@ Private `fork/arr-local` experiments on top of upstream Ether.
 
 - Do **not** point Unraid Compose Manager **Ether** at this tree.
 - Official runtime: `/mnt/user/appdata/ether` + `ghcr.io/braedonsaunders/ether`.
-- Remotes: `upstream` = github.com/braedonsaunders/ether; `origin` = local `ether-private.git`.
+- Remotes: `upstream` = github.com/braedonsaunders/ether; `origin` = github.com/TheIndieArmy/ether; `local` = optional bare `../ether-private.git`.
 
 ## Goal
 
