@@ -210,6 +210,26 @@ export interface PosterProviderConfig {
   profile?: string;
 }
 
+export interface ArrInstance {
+  url: string;
+  apiKey: string;
+  qualityProfileId: number;
+  rootFolderPath: string;
+}
+
+export interface ArrPathMap {
+  arrPrefix: string;
+  localPrefix: string;
+}
+
+/** Optional Sonarr/Radarr integration (fork/arr-local). */
+export interface ArrConfig {
+  enabled: boolean;
+  radarr: ArrInstance;
+  sonarr: ArrInstance;
+  pathMaps: ArrPathMap[] | null;
+}
+
 export interface EtherConfig {
   posters?: PosterProviderConfig;
   availability?: AvailabilityConfig;
@@ -333,6 +353,7 @@ export interface EtherConfig {
   trakt: { enabled: boolean; clientId: string; clientSecret: string };
   openSubtitles: { enabled: boolean; apiKey: string; username: string; password: string };
   llm: { enabled: boolean; provider: string; baseUrl: string; apiKey: string; model: string };
+  arr: ArrConfig;
   updates: {
     channel: string;
     autoUpdate: boolean;
@@ -419,6 +440,8 @@ export interface TestResult {
   ok: boolean;
   error?: string;
   durationMs: number;
+  /** Present for Arr probes (root folders / quality profiles). */
+  probe?: unknown;
 }
 export interface LogEntry {
   time: string;

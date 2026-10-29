@@ -16,4 +16,15 @@ Private `fork/arr-local` experiments on top of upstream Ether.
 
 ## Status
 
-Scaffold only — integration work starts next.
+### Done (settings slice)
+
+- `config.Arr` with master **`enabled`** flag (unlocks connection fields when on).
+- `internal/arr` client: status, root folders, quality profiles, Radarr `MovieFileByTMDB`.
+- Admin: `PUT /config/arr`, `POST /api/test/arr` (returns probe with roots/profiles).
+- Owner UI: **Integrations → Arr** — Enable Arrs → Sonarr/Radarr URL/key → Test unlocks root/profile picks + path maps.
+
+### Next
+
+- Wire playback to prefer Arr `hasFile` after path-map rewrite.
+- Missing-title Arr search/ensure + progress UX.
+- Rebuild embedded `internal/admin/dist` when shipping a binary (`cd web && npm run build` per upstream docs).

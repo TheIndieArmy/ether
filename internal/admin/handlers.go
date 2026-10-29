@@ -416,6 +416,53 @@ func (h *Handler) handleTestTrakt(w http.ResponseWriter, r *http.Request) {
 	h.runTest(w, r, func(ctx context.Context) error { return h.deps.TestTrakt(ctx, cfg) })
 }
 
+func (h *Handler) handleTestArr(w http.ResponseWriter, r *http.Request) {
+	if h.deps.TestArr == nil {
+		writeError(w, http.StatusNotImplemented, "unavailable", "Arr testing is not available")
+		return
+	}
+	prev := h.deps.Config.Get().Arr
+	var body struct {
+		Kind string             `json:"kind"`
+		Inst config.ArrInstance `json:"instance"`
+	}
+	if !decodeTestBody(w, r, &body) {
+		return
+	}
+	kind := strings.ToLower(strings.TrimSpace(body.Kind))
+	stored := prev.Radarr
+	field := "arr.radarr.apiKey"
+	switch kind {
+	case "sonarr":
+		stored = prev.Sonarr
+		field = "arr.sonarr.apiKey"
+	case "radarr":
+	default:
+		writeError(w, http.StatusBadRequest, "invalid", "kind must be radarr or sonarr")
+		return
+	}
+	var perrs placeholderErrors
+	body.Inst.APIKey = perrs.restore(field, body.Inst.APIKey, stored.APIKey, body.Inst.URL == stored.URL)
+	if len(perrs) > 0 {
+		writeSecretRequired(w, perrs)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), h.deps.TestTimeout)
+	defer cancel()
+	start := time.Now()
+	probe, err := h.deps.TestArr(ctx, kind, body.Inst)
+	out := map[string]any{
+		"ok":         err == nil,
+		"durationMs": time.Since(start).Milliseconds(),
+	}
+	if err != nil {
+		out["error"] = err.Error()
+	} else if probe != nil {
+		out["probe"] = probe
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // ---- Dashboard / status / traces ----
 
 func (h *Handler) statusProviders() map[string]StatusFunc {

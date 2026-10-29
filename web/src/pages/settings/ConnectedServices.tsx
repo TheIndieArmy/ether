@@ -4,6 +4,7 @@ import {
   Captions,
   Clapperboard,
   Cloud,
+  HardDrive,
   History,
   ListPlus,
   SkipForward,
@@ -21,7 +22,8 @@ import { LevelBadge } from "../../components/status";
 import { localized, t, tn } from "../../i18n";
 import { api, apiFetch, ApiError, type TestFn } from "../../lib/api";
 import { useAsync } from "../../lib/hooks";
-import type { EtherConfig } from "../../lib/types";
+import type { ArrConfig, EtherConfig } from "../../lib/types";
+import { ArrSettings } from "./ArrSettings";
 import { SimklIntegration } from "./SimklIntegration";
 import { LanguageFeatures } from "./LanguageFeatures";
 import { LanguageModelSettings } from "./LanguageModel";
@@ -30,12 +32,12 @@ import * as S from "./schema";
 
 type Obj = Record<string, unknown>;
 
-export type ServiceTab = "overview" | "trakt" | "llm" | "opensubtitles";
+export type ServiceTab = "overview" | "trakt" | "llm" | "opensubtitles" | "arr";
 
 interface Service {
   /** The Integrations tab the form lives on. */
   tab: Exclude<ServiceTab, "overview">;
-  configKey: "trakt" | "llm" | "openSubtitles";
+  configKey: "trakt" | "llm" | "openSubtitles" | "arr";
   endpoint: string;
   label: string;
   groups: FieldGroup[];
@@ -87,6 +89,24 @@ const SERVICES: Service[] = localized(() => [
     groups: S.OPENSUBTITLES,
     testLabel: t("Test OpenSubtitles"),
     test: (v) => api.testOpenSubtitles(v as EtherConfig["openSubtitles"]),
+  },
+  {
+    tab: "arr",
+    configKey: "arr",
+    endpoint: "arr",
+    label: t("Arr"),
+    groups: [],
+    form: ({ value, saved, onChange, errors, footer }) => (
+      <ArrSettings
+        value={value as unknown as ArrConfig}
+        saved={saved as unknown as ArrConfig | undefined}
+        onChange={(next) => onChange(next as unknown as Obj)}
+        errors={errors}
+        footer={footer}
+      />
+    ),
+    testLabel: t("Test Arr"),
+    test: async () => ({ ok: true, durationMs: 0 }),
   },
 ]);
 
@@ -403,6 +423,18 @@ function ServiceOverview({ cfg }: { cfg: EtherConfig }) {
       status: null,
       href: "/sources/indexers",
       action: t("Sources › Indexers"),
+    },
+    {
+      name: t("Arr"),
+      icon: <HardDrive size={icon} />,
+      description: t("Prefer Sonarr/Radarr downloads on Play; map root folders."),
+      status: switchStatus(
+        cfg.arr?.enabled ?? false,
+        Boolean(cfg.arr?.radarr?.url || cfg.arr?.sonarr?.url),
+        t("Needs a Sonarr or Radarr URL"),
+      ),
+      href: "/services/arr",
+      action: cfg.arr?.enabled ? t("Manage Arr") : t("Set up Arr"),
     },
   ];
   return (
