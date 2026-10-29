@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/braedonsaunders/ether/internal/admin"
+	arrclient "github.com/braedonsaunders/ether/internal/arr"
 	"github.com/braedonsaunders/ether/internal/auth"
 	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/llm"
@@ -69,6 +70,19 @@ func (a *App) buildAdmin() http.Handler {
 		},
 		TestOpenSubtitles: subtitles.Test,
 		TestTrakt:         trakt.Test,
+		TestArr: func(ctx context.Context, kind string, inst config.ArrInstance) (any, error) {
+			c := arrclient.New(inst.URL, inst.APIKey, kind)
+			st, roots, profiles, err := c.Probe(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{
+				"status":           st,
+				"rootFolders":      roots,
+				"qualityProfiles":  profiles,
+				"message":          fmt.Sprintf("%s %s", st.AppName, st.Version),
+			}, nil
+		},
 		TestLLM: func(ctx context.Context, c config.LLM) error {
 			c.Enabled = true // test the settings before the owner switches them on
 			_, err := llm.NewClient(llm.ClientOptions{Config: c, Logger: a.log}).Chat(ctx,

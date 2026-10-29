@@ -16,7 +16,7 @@ var configSections = map[string]string{
 	"markers":      "markers", "server": "server", "plex": "plex", "usenet": "usenet", "indexers": "indexers",
 	"cache": "cache", "catalog": "catalog", "resolver": "resolver", "quality": "quality",
 	"transcode": "transcode", "trakt": "trakt", "simkl": "simkl", "opensubtitles": "openSubtitles",
-	"openSubtitles": "openSubtitles", "llm": "llm", "updates": "updates", "spike": "spike",
+	"openSubtitles": "openSubtitles", "llm": "llm", "arr": "arr", "updates": "updates", "spike": "spike",
 	"debrid": "debrid", "indexerSites": "indexerSites",
 }
 
