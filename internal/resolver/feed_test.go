@@ -60,3 +60,29 @@ func TestDiscoveredDescriptorAvoidsSearchAndCachedHealthDoesNotRenewObservation(
 		}
 	}
 }
+
+// A sticky Prefer (e.g. last Usenet pick) must not hide Arr hasFile discovery.
+func TestDiscoveredLocalStillWinsWhenPreferSet(t *testing.T) {
+	idx := &fakeIndexer{}
+	local := core.Release{
+		ID: "arr:radarr:1", Name: "Local File", Protocol: core.ProtocolLocal,
+		StreamURL: "/tmp/unused", Score: 1e9, Size: 8 << 30,
+		Info: releaseparse.Parse("Movie.2020.2160p.BluRay.x265"),
+	}
+	s := New(idx, fakeHealth{}, nil, testCfg(), Options{
+		Discovered: func(context.Context, *core.Title) []core.Release { return []core.Release{local} },
+	})
+	defer s.Close()
+	res, err := s.Resolve(t.Context(), core.ResolveRequest{
+		Title: matrixTitle(), Client: webCaps(), Prefer: "some-usenet-id",
+	})
+	if err != nil || res == nil {
+		t.Fatal(res, err)
+	}
+	if res.Release.ID != local.ID || res.Release.Protocol != core.ProtocolLocal {
+		t.Fatalf("prefer hid local discovery: %+v", res.Release)
+	}
+	if idx.searches.Load() != 0 {
+		t.Fatalf("searched despite local discovery: %d", idx.searches.Load())
+	}
+}
