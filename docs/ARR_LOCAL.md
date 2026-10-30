@@ -24,6 +24,7 @@ Ship only to **origin** (`TheIndieArmy/ether`), not upstream PRs, until ready.
 - Admin: `PUT /config/arr`, `POST /api/test/arr` (probe roots/profiles).
 - Owner UI: **Integrations → Arr** — Enable → URL/key → Test → root/profile + path maps.
 - **Play prefers Arr local:** `Discover` → path maps → `ProtocolLocal`; `WrapEngine` / `WrapIndexer` open/fetch from disk; resolver skips indexer-style gates for local releases.
+- Local hits still win when a sticky Prefer points at a prior Usenet/debrid pick (Activity badge **Arr** when that path is used).
 - Library helpers for missing-file Arr search (`Ensure`) exist; Play does **not** pass `EnsureMissing` yet.
 
 ### Next

@@ -369,6 +369,9 @@ func sourceOrigin(src core.MediaSource, protocol string) string {
 	if protocol == core.ProtocolHTTP {
 		return "HTTP"
 	}
+	if protocol == core.ProtocolLocal {
+		return "Arr"
+	}
 	return "Usenet"
 }
 
