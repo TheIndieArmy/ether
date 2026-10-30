@@ -415,7 +415,14 @@ func (s *Server) prepare(ctx context.Context, pr *Request, p *playRequest) (*cor
 		}
 	}
 	if v := ps.Info.Video(); v != nil {
-		s.log.Debug("playback media decision", "key", p.key, "client", pr.ClientID, "device", pr.Device, "model", pr.Model, "platformVersion", pr.PlatformVersion, "video", v.Codec, "videoProfile", v.Profile, "height", v.Height, "bitDepth", v.BitDepth, "transfer", v.ColorTransfer, "dvProfile", v.DolbyVisionProfile, "dvLevel", v.DolbyVisionLevel, "dvCompatibility", v.DolbyVisionCompatibilityID, "kind", dec.Kind, "outputContainer", dec.Container, "videoCopy", dec.VideoCopy, "audioCopy", dec.AudioCopy, "hdrCap", p.caps.HDR10, "dvCap", p.caps.DolbyVision, "profileExtra", pr.ProfileExtra)
+		hdrSource := v.BitDepth >= 10 || strings.EqualFold(v.ColorTransfer, "smpte2084") || strings.EqualFold(v.ColorTransfer, "arib-std-b67") || v.DolbyVision
+		logDecision := s.log.Debug
+		if hdrSource {
+			// Ether Test often runs logLevel=info; HDR Decide mismatches need
+			// the profile-extra line without flipping the whole server to debug.
+			logDecision = s.log.Info
+		}
+		logDecision("playback media decision", "key", p.key, "client", pr.ClientID, "device", pr.Device, "model", pr.Model, "platform", pr.Platform, "platformVersion", pr.PlatformVersion, "video", v.Codec, "videoProfile", v.Profile, "height", v.Height, "bitDepth", v.BitDepth, "transfer", v.ColorTransfer, "dvProfile", v.DolbyVisionProfile, "dvLevel", v.DolbyVisionLevel, "dvCompatibility", v.DolbyVisionCompatibilityID, "kind", dec.Kind, "outputContainer", dec.Container, "videoCopy", dec.VideoCopy, "audioCopy", dec.AudioCopy, "toneMap", dec.ToneMap, "hdrCap", p.caps.HDR10, "dvCap", p.caps.DolbyVision, "profileExtra", pr.ProfileExtra)
 	}
 	subtitle := -1
 	if p.subSet && p.subSel >= 0 && p.subSel < len(ps.Info.Streams) && ps.Info.Streams[p.subSel].Type == "subtitle" {
@@ -896,6 +903,11 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 		}
 		s.d.Transcoder.Stop(p.sessionID)
 	}
+	if !dec.VideoCopy && s.hasStartedVideoCopy(pr.User.ID, pr.ClientID, p.key, p.sessionID) {
+		s.log.Info("skip encode HLS start; video-copy sibling active", "session", p.sessionID, "key", p.key)
+		writeHTTPError(w, http.StatusGone)
+		return
+	}
 	hs, err := s.d.Transcoder.StartHLS(context.WithoutCancel(ctx), core.HLSRequest{
 		SessionID:   p.sessionID,
 		InputURL:    s.d.Playback.InputURL(ps.ID),
@@ -910,6 +922,7 @@ func (s *Server) handleStartHLS(w http.ResponseWriter, r *http.Request) {
 	}
 	entry.decision, entry.offset, entry.started, entry.updatedAt = dec, p.offset, true, s.now()
 	s.transcodes.put(entry)
+	s.reconcilePlayEncoders(ctx, pr.User.ID, pr.ClientID, p.key, p.sessionID)
 	unlockEncoder()
 	unlockOwner()
 	s.writeMasterPlaylist(w, r, p.sessionID, hs, ps.Info, dec)
