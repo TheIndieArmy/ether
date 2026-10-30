@@ -93,3 +93,68 @@ func (s *Server) cleanSupersededEncoders(ctx context.Context, user int64, client
 		unlock()
 	}
 }
+
+// hasStartedVideoCopy reports another started remux/Direct Stream encoder
+// for this viewer/client/title (excluding exceptID).
+func (s *Server) hasStartedVideoCopy(user int64, client string, key core.RatingKey, exceptID string) bool {
+	for _, id := range s.transcodes.forClient(user, client, key) {
+		if id == exceptID {
+			continue
+		}
+		e, ok := s.transcodes.get(id)
+		if ok && e.started && e.decision.VideoCopy {
+			return true
+		}
+	}
+	return false
+}
+
+// reconcilePlayEncoders stops sibling encoders for the same viewer/client/title
+// after keepID has started. Plex Web can open a second DASH session= id for one
+// play while reusing X-Plex-Session-Identifier: an early thin Profile-Extra
+// tone-maps, then a later full report remuxes. Prefer VideoCopy — stop encode
+// siblings when remux starts. Caller holds the owner gate and keepID's encoder
+// gate; this never re-locks keepID.
+func (s *Server) reconcilePlayEncoders(ctx context.Context, user int64, client string, key core.RatingKey, keepID string) {
+	keep, ok := s.transcodes.get(keepID)
+	if !ok || !keep.started {
+		return
+	}
+	for _, id := range s.transcodes.forClient(user, client, key) {
+		if id == keepID {
+			continue
+		}
+		e, ok := s.transcodes.get(id)
+		if !ok || e.userID != user || e.clientID != client || e.key != key || !e.started {
+			continue
+		}
+		// Keep an existing copy when we just started an encode (start paths
+		// refuse this). Keep only keepID among copies.
+		if !keep.decision.VideoCopy && e.decision.VideoCopy {
+			continue
+		}
+		if keep.decision.VideoCopy && e.decision.VideoCopy && id != keepID {
+			// fall through: newer copy replaces older copy
+		} else if keep.decision.VideoCopy && !e.decision.VideoCopy {
+			// fall through: copy replaces encode
+		} else if !keep.decision.VideoCopy && !e.decision.VideoCopy {
+			// Newer encode replaces older encode for the same play.
+		} else {
+			continue
+		}
+		unlock, err := s.lockEncoder(ctx, id)
+		if err != nil {
+			return
+		}
+		cur, ok := s.transcodes.get(id)
+		if ok && cur.userID == user && cur.clientID == client && cur.key == key && cur.started {
+			if s.d.Transcoder != nil {
+				s.d.Transcoder.Stop(id)
+			}
+			s.transcodes.remove(id)
+			s.log.Info("stopped sibling transcode session", "kept", keepID, "stopped", id, "key", key,
+				"stoppedCopy", cur.decision.VideoCopy)
+		}
+		unlock()
+	}
+}

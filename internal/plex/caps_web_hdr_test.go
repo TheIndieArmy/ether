@@ -66,7 +66,8 @@ func TestWebHDRExplicitDenialToneMaps(t *testing.T) {
 }
 
 // HEVC listed without an affirmative 10-bit/PQ claim must not promote HDR10
-// (Braedon #136: hevc alone ≠ HDR10). Codec support stays independent.
+// (Braedon #136: hevc alone ≠ HDR10). Thin Ether DASH appends tone-map until
+// a later start carries bitDepth/PQ; sibling cleanup drops the thin encode.
 func TestWebHDRHEVCAloneDoesNotPromoteHDR10(t *testing.T) {
 	for _, tc := range []struct {
 		name, platform, extra string
@@ -75,6 +76,11 @@ func TestWebHDRHEVCAloneDoesNotPromoteHDR10(t *testing.T) {
 			name:     "firefox direct-play hevc",
 			platform: "Firefox",
 			extra:    "add-direct-play-profile(type=videoProfile&container=mkv&videoCodec=hevc&audioCodec=aac)",
+		},
+		{
+			name:     "firefox thin ether dash append",
+			platform: "Firefox",
+			extra:    "append-transcode-target-codec(type=videoProfile&context=streaming&videoCodec=h264%2Chevc&audioCodec=aac&protocol=dash)",
 		},
 		{
 			name:     "chrome transcode-target hevc",

@@ -82,10 +82,9 @@ var (
 // browserCaps is Plex Web, which depends on the browser in X-Plex-Platform.
 // Base caps stay conservative: only Safari claims HEVC+HDR10 by default.
 // Chromium may list HEVC without HDR10; Firefox lists neither. Plex Web may
-// still promote HDR10 remux when profile-extra affirmatively lists hevc and
-// also claims 10-bit and/or PQ (see promoteWebHDRFromProfile). Audio stays
-// conservative (no EAC3 on Chrome/Firefox) so incompatible soundtracks remux
-// to AAC.
+// still promote HDR10 remux from profile-extra (see promoteWebHDRFromProfile).
+// Audio stays conservative (no EAC3 on Chrome/Firefox) so incompatible
+// soundtracks remux to AAC.
 func browserCaps(platform string) baseCaps {
 	p := strings.ToLower(platform)
 	c := baseCaps{
@@ -208,10 +207,11 @@ type profileExtraEvidence struct {
 
 // promoteWebHDRFromProfile enables HDR10 remux for Plex Web when profile-extra
 // affirmatively listed hevc and also claimed 10-bit/PQ, with no HDR denial.
-// Matches observed PMS Firefox Direct Stream of HDR10 (video copy): the
-// client sent hevc targets plus video.bitDepth upperBound=10 and a colorTrc
-// match list including smpte2084 — not hevc alone, and not "absence of
-// denial." Scoped to Plex Web; browser name alone never promotes.
+// Matches the Profile-Extra Plex Web sends once it knows the title is HDR10
+// HEVC (bitDepth upperBound=10 and/or colorTrc allow-list including smpte2084).
+// HEVC alone never implies HDR10 (Braedon #136); browser name alone never
+// promotes. An early thin Profile-Extra may still tone-map; a later start with
+// the full report remuxes — sibling encode cleanup drops the thin session.
 func promoteWebHDRFromProfile(c *core.ClientCaps, product string, ev profileExtraEvidence) {
 	if !strings.Contains(strings.ToLower(product), "plex web") {
 		return
