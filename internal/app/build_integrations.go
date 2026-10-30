@@ -20,7 +20,7 @@ func (a *App) buildIntegrations(ctx context.Context, cfg config.Config) error {
 	}
 	a.cachefill, err = cachefill.New(a.cache.Directory(), cachefill.Deps{
 		Shared:  sharedShelf,
-		Catalog: a.catalog, Resolver: a.resolver, Engine: a.media, Cache: a.cache,
+		Catalog: a.catalog, Resolver: a.resolver, Engine: a.playMedia, Cache: a.cache,
 		State: a.state, Household: a.cacheHousehold,
 		Config: a.runningCacheConfig, Owner: a.users.Owner,
 		Active: func() bool {

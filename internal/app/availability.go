@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+
+	"github.com/braedonsaunders/ether/internal/arr"
 	"github.com/braedonsaunders/ether/internal/availability"
 	"github.com/braedonsaunders/ether/internal/core"
 )
@@ -20,10 +22,15 @@ func (a *App) buildAvailability() error {
 	return err
 }
 func (a *App) discoveredReleases(ctx context.Context, t *core.Title) []core.Release {
-	if a.availability == nil {
-		return nil
+	cfg := a.cfg.Get().Arr
+	var out []core.Release
+	if local := arr.Discover(ctx, t, cfg, arr.DiscoverOptions{}); len(local) > 0 {
+		out = append(out, local...)
 	}
-	return a.availability.Candidates(ctx, t)
+	if a.availability != nil {
+		out = append(out, a.availability.Candidates(ctx, t)...)
+	}
+	return out
 }
 func (a *App) observeRelease(ctx context.Context, t *core.Title, r core.Release) {
 	if a.availability != nil {
