@@ -20,9 +20,10 @@ import { SaveBar } from "../../components/SaveBar";
 import { localized, t } from "../../i18n";
 import { api, apiFetch, ApiError, type TestFn } from "../../lib/api";
 import { useAsync } from "../../lib/hooks";
-import type { EtherConfig } from "../../lib/types";
+import type { ArrConfig, EtherConfig } from "../../lib/types";
 import { MarkerCoverage } from "../playback/Markers";
 import { RatingSources, type RatingSettings } from "../metadata/Ratings";
+import { ArrSettings } from "./ArrSettings";
 import { SimklIntegration, type SimklSettings } from "./SimklIntegration";
 import { LanguageFeatures } from "./LanguageFeatures";
 import { LanguageModelSettings } from "./LanguageModel";
@@ -32,7 +33,7 @@ import * as S from "./schema";
 type Obj = Record<string, unknown>;
 
 export type ServiceTab =
-  "overview" | "trakt" | "simkl" | "llm" | "opensubtitles" | "ratings" | "introdb";
+  "overview" | "trakt" | "simkl" | "llm" | "opensubtitles" | "ratings" | "introdb" | "arr";
 
 const TAB_ORDER: ServiceTab[] = [
   "overview",
@@ -42,6 +43,7 @@ const TAB_ORDER: ServiceTab[] = [
   "opensubtitles",
   "ratings",
   "introdb",
+  "arr",
 ];
 
 /** Overview plus every enabled integration. A disabled URL does not grow a tab. */
@@ -56,6 +58,7 @@ export function integrationTabs(
     opensubtitles: "OpenSubtitles",
     ratings: t("Ratings"),
     introdb: "TheIntroDB",
+    arr: t("Arr"),
   };
   return TAB_ORDER.filter((key) => key === "overview" || enabled[key]).map((key) => ({
     key,
@@ -65,7 +68,7 @@ export function integrationTabs(
 
 interface Service {
   tab: Exclude<ServiceTab, "overview" | "ratings">;
-  configKey: "trakt" | "simkl" | "llm" | "openSubtitles" | "markers";
+  configKey: "trakt" | "simkl" | "llm" | "openSubtitles" | "markers" | "arr";
   endpoint: string;
   /** Boolean this card's switch writes. Omitted fields stay stored. */
   flag: "enabled" | "theIntroDb";
@@ -150,6 +153,31 @@ const SERVICES: Service[] = localized(() => [
     flag: "theIntroDb",
     label: "TheIntroDB",
     groups: S.MARKERS,
+  },
+  {
+    tab: "arr",
+    configKey: "arr",
+    endpoint: "arr",
+    flag: "enabled",
+    label: t("Arr"),
+    groups: [],
+    form: ({ value, saved, onChange, errors, footer }) => (
+      <ArrSettings
+        value={value as unknown as ArrConfig}
+        saved={saved as unknown as ArrConfig | undefined}
+        onChange={(next) => onChange(next as unknown as Obj)}
+        errors={errors}
+        footer={footer}
+      />
+    ),
+    testLabel: t("Test Arr"),
+    test: async () => ({ ok: true, durationMs: 0 }),
+    blockEnable: (v) => {
+      const radarr = v.radarr as Obj | undefined;
+      const sonarr = v.sonarr as Obj | undefined;
+      const url = String(radarr?.url ?? "").trim() || String(sonarr?.url ?? "").trim();
+      return url ? null : t("Needs a Sonarr or Radarr URL");
+    },
   },
 ]);
 
@@ -295,6 +323,43 @@ function mergeSection(base: EtherConfig, key: Service["configKey"], section: Obj
         markers: {
           theIntroDb: boolField(section, "theIntroDb", prev.theIntroDb),
           apiKey: textField(section, "apiKey", prev.apiKey),
+        },
+      };
+    }
+    case "arr": {
+      const prev = base.arr ?? {
+        enabled: false,
+        radarr: { url: "", apiKey: "", qualityProfileId: 0, rootFolderPath: "" },
+        sonarr: { url: "", apiKey: "", qualityProfileId: 0, rootFolderPath: "" },
+        pathMaps: null,
+      };
+      const radarr = (section.radarr as Obj | undefined) ?? {};
+      const sonarr = (section.sonarr as Obj | undefined) ?? {};
+      return {
+        ...base,
+        arr: {
+          enabled: boolField(section, "enabled", prev.enabled),
+          radarr: {
+            url: textField(radarr, "url", prev.radarr.url),
+            apiKey: textField(radarr, "apiKey", prev.radarr.apiKey),
+            qualityProfileId:
+              typeof radarr.qualityProfileId === "number"
+                ? radarr.qualityProfileId
+                : prev.radarr.qualityProfileId,
+            rootFolderPath: textField(radarr, "rootFolderPath", prev.radarr.rootFolderPath),
+          },
+          sonarr: {
+            url: textField(sonarr, "url", prev.sonarr.url),
+            apiKey: textField(sonarr, "apiKey", prev.sonarr.apiKey),
+            qualityProfileId:
+              typeof sonarr.qualityProfileId === "number"
+                ? sonarr.qualityProfileId
+                : prev.sonarr.qualityProfileId,
+            rootFolderPath: textField(sonarr, "rootFolderPath", prev.sonarr.rootFolderPath),
+          },
+          pathMaps: Array.isArray(section.pathMaps)
+            ? (section.pathMaps as ArrConfig["pathMaps"])
+            : prev.pathMaps,
         },
       };
     }
@@ -1070,6 +1135,24 @@ function ServiceOverview({
         onToggle={(next) => onToggle(service("introdb"), next)}
         configureHref="/services/introdb"
         configureLabel={t("Markers")}
+      />
+      <IntegrationAppCard
+        identity={{ id: "arr", name: t("Arr") }}
+        description={t("Prefer Sonarr/Radarr downloads on Play; map root folders.")}
+        status={switchStatus(
+          on("arr"),
+          Boolean(
+            (saved("arr").radarr as Obj | undefined)?.url ||
+              (saved("arr").sonarr as Obj | undefined)?.url,
+          ),
+          t("Needs a Sonarr or Radarr URL"),
+        )}
+        enabled={on("arr")}
+        busy={locked || busyId === "arr"}
+        disabled={switchesHeld}
+        onToggle={(next) => onToggle(service("arr"), next)}
+        configureHref="/services/arr"
+        configureLabel={on("arr") ? t("Manage Arr") : t("Set up Arr")}
       />
     </IntegrationGroup>
   );

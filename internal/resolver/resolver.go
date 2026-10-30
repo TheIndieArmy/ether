@@ -577,46 +577,61 @@ func (s *Service) resolve(ctx context.Context, req core.ResolveRequest, profile 
 	defer early.close()
 	ctx = context.WithValue(ctx, searchPreparationKey{}, early)
 	var discovered []core.Release
-	if s.discovered != nil && pin == nil && req.Prefer == "" && len(req.Exclude) == 0 {
+	if s.discovered != nil && pin == nil {
 		discovered = s.discovered(ctx, t)
 		if len(discovered) > 0 {
 			trace.Discovery = append(trace.Discovery, DiscoveryTrace{Path: "feed", Count: len(discovered)})
 		}
-		early.arrived(discovered)
-		// A locally verified feed answer can avoid a search. A slow feed
-		// gets only 100ms head start, then keeps checking alongside search.
-		if len(discovered) > 0 && !early.disabled {
-			deadline := time.NewTimer(100 * time.Millisecond)
-			tick := time.NewTicker(5 * time.Millisecond)
-		feedWait:
-			for {
-				if ready := early.readyResultsAfter(0); len(ready) > 0 {
-					candidates, _, rankErr := s.rankCandidates(ctx, req, sreq, profile, ready, &trace, "")
-					if rankErr == nil && len(candidates) > 0 {
-						early.attach(candidates)
-						idx, payload, checkErr := s.validateCandidates(ctx, candidates, &trace, 0)
-						if checkErr == nil && idx >= 0 {
-							deadline.Stop()
-							tick.Stop()
-							trace.Winner = candidates[idx].rel.ID
-							s.setAvailability(ctx, int64(t.Key), true, s.searchTTL())
-							return s.resolution(t.Key, candidates, idx, payload, &trace), nil
-						}
-					}
-					break feedWait
-				}
-				select {
-				case <-deadline.C:
-					break feedWait
-				case <-ctx.Done():
-					deadline.Stop()
-					tick.Stop()
-					return nil, ctx.Err()
-				case <-tick.C:
+		// Arr hasFile hits must beat a sticky Prefer (last Usenet/debrid pick).
+		// Prefer disables speculative feed intake below, so validate locals here.
+		if locals := localDiscovered(discovered); len(locals) > 0 {
+			candidates, _, rankErr := s.rankCandidates(ctx, req, sreq, profile, locals, &trace, "")
+			if rankErr == nil && len(candidates) > 0 {
+				idx, payload, checkErr := s.validateCandidates(ctx, candidates, &trace, 0)
+				if checkErr == nil && idx >= 0 {
+					trace.Winner = candidates[idx].rel.ID
+					s.setAvailability(ctx, int64(t.Key), true, s.searchTTL())
+					return s.resolution(t.Key, candidates, idx, payload, &trace), nil
 				}
 			}
-			deadline.Stop()
-			tick.Stop()
+		}
+		if req.Prefer == "" && len(req.Exclude) == 0 {
+			early.arrived(discovered)
+			// A locally verified feed answer can avoid a search. A slow feed
+			// gets only 100ms head start, then keeps checking alongside search.
+			if len(discovered) > 0 && !early.disabled {
+				deadline := time.NewTimer(100 * time.Millisecond)
+				tick := time.NewTicker(5 * time.Millisecond)
+			feedWait:
+				for {
+					if ready := early.readyResultsAfter(0); len(ready) > 0 {
+						candidates, _, rankErr := s.rankCandidates(ctx, req, sreq, profile, ready, &trace, "")
+						if rankErr == nil && len(candidates) > 0 {
+							early.attach(candidates)
+							idx, payload, checkErr := s.validateCandidates(ctx, candidates, &trace, 0)
+							if checkErr == nil && idx >= 0 {
+								deadline.Stop()
+								tick.Stop()
+								trace.Winner = candidates[idx].rel.ID
+								s.setAvailability(ctx, int64(t.Key), true, s.searchTTL())
+								return s.resolution(t.Key, candidates, idx, payload, &trace), nil
+							}
+						}
+						break feedWait
+					}
+					select {
+					case <-deadline.C:
+						break feedWait
+					case <-ctx.Done():
+						deadline.Stop()
+						tick.Stop()
+						return nil, ctx.Err()
+					case <-tick.C:
+					}
+				}
+				deadline.Stop()
+				tick.Stop()
+			}
 		}
 	}
 
@@ -1158,6 +1173,16 @@ func minFormatScore(rcfg config.Resolver, profile core.QualityProfile) *int {
 	return rcfg.MinCustomFormatScore
 }
 
+func localDiscovered(in []core.Release) []core.Release {
+	var out []core.Release
+	for _, r := range in {
+		if r.Protocol == core.ProtocolLocal {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // rejectReason returns "" to accept, or the reason to drop a release.
 // preferred (the viewer's explicit Play Version pick) bypasses the
 // profile-policy gates — resolution bounds, DV policy, imported quality gates,
@@ -1177,6 +1202,11 @@ func (s *Service) rejectReason(rel core.Release, t *core.Title, sreq core.Search
 	}
 	if s.recentlyFailedHealth(rel.ID) {
 		return "source recently failed health check; retrying later"
+	}
+	// Arr local files are already on disk for this title; skip indexer-style
+	// quality/identity gates (no release name to parse for height/episode).
+	if rel.Protocol == core.ProtocolLocal {
+		return ""
 	}
 	lowerName := strings.ToLower(rel.Name)
 	for _, term := range rcfg.BlockedTerms {

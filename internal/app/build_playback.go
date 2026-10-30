@@ -75,7 +75,7 @@ func (a *App) buildPlayback(ctx context.Context, cfg config.Config) error {
 			return transcode.ProbeTrailer(ctx, src, src.Size(), info)
 		},
 		Resolver:   a.resolver,
-		Engine:     a.media,
+		Engine:     a.playMedia,
 		Transcoder: tc,
 		Catalog:    a.catalog,
 		Cache:      a.cache,
@@ -83,7 +83,7 @@ func (a *App) buildPlayback(ctx context.Context, cfg config.Config) error {
 		SelectProfile: func(caps core.ClientCaps, u *core.User) core.QualityProfile {
 			return resolver.SelectProfile(a.cfg.Get().Quality, caps, u)
 		},
-		FetchNZB: a.sources.FetchNZB,
+		FetchNZB: a.playSources.FetchNZB,
 		Aligner: func() core.TimelineAligner {
 			if a.subtitles == nil {
 				return nil

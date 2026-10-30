@@ -403,6 +403,31 @@ func ValidateConfig(cfg config.Config) []FieldError {
 	if cfg.Trakt.Enabled && strings.TrimSpace(cfg.Trakt.ClientID) == "" {
 		v.add("trakt.clientId", "is required when Trakt is enabled")
 	}
+	if cfg.Arr.Enabled {
+		if u := strings.TrimSpace(cfg.Arr.Radarr.URL); u != "" {
+			v.httpURL("arr.radarr.url", u, false)
+			if strings.TrimSpace(cfg.Arr.Radarr.APIKey) == "" {
+				v.add("arr.radarr.apiKey", "is required when a Radarr URL is set")
+			}
+		}
+		if u := strings.TrimSpace(cfg.Arr.Sonarr.URL); u != "" {
+			v.httpURL("arr.sonarr.url", u, false)
+			if strings.TrimSpace(cfg.Arr.Sonarr.APIKey) == "" {
+				v.add("arr.sonarr.apiKey", "is required when a Sonarr URL is set")
+			}
+		}
+		if strings.TrimSpace(cfg.Arr.Radarr.URL) == "" && strings.TrimSpace(cfg.Arr.Sonarr.URL) == "" {
+			v.add("arr", "enable Arr and set at least one Sonarr or Radarr URL")
+		}
+		for i, m := range cfg.Arr.PathMaps {
+			if strings.TrimSpace(m.ArrPrefix) == "" {
+				v.add(fmt.Sprintf("arr.pathMaps[%d].arrPrefix", i), "is required")
+			}
+			if strings.TrimSpace(m.LocalPrefix) == "" {
+				v.add(fmt.Sprintf("arr.pathMaps[%d].localPrefix", i), "is required")
+			}
+		}
+	}
 	if cfg.Updates.Channel != "" {
 		v.oneOf("updates.channel", cfg.Updates.Channel, "stable", "beta")
 	}

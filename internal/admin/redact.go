@@ -33,6 +33,7 @@ func RedactConfig(cfg config.Config) config.Config {
 	out.Simkl.ClientSecret = redact(out.Simkl.ClientSecret)
 	out.OpenSubtitles = redactOpenSubtitles(out.OpenSubtitles)
 	out.LLM = redactLLM(out.LLM)
+	out.Arr = redactArr(out.Arr)
 	out.Database = out.Database.Redacted()
 	if cfg.Usenet.Providers != nil {
 		out.Usenet.Providers = make([]config.UsenetProvider, len(cfg.Usenet.Providers))
@@ -68,6 +69,12 @@ func redactOpenSubtitles(o config.OpenSubtitles) config.OpenSubtitles {
 	o.APIKey = redact(o.APIKey)
 	o.Password = redact(o.Password)
 	return o
+}
+
+func redactArr(a config.Arr) config.Arr {
+	a.Radarr.APIKey = redact(a.Radarr.APIKey)
+	a.Sonarr.APIKey = redact(a.Sonarr.APIKey)
+	return a
 }
 
 func redactTrakt(t config.Trakt) config.Trakt {
@@ -210,6 +217,7 @@ func UnredactConfig(next, prev config.Config) (config.Config, []FieldError) {
 	out.Simkl.ClientSecret = errs.restore("simkl.clientSecret", next.Simkl.ClientSecret, prev.Simkl.ClientSecret, strings.TrimSpace(next.Simkl.ClientID) == strings.TrimSpace(prev.Simkl.ClientID))
 	out.OpenSubtitles = errs.unredactOpenSubtitles(next.OpenSubtitles, prev.OpenSubtitles)
 	out.LLM = errs.unredactLLM(next.LLM, prev.LLM)
+	out.Arr = errs.unredactArr(next.Arr, prev.Arr)
 	if next.Usenet.Providers != nil {
 		out.Usenet.Providers = make([]config.UsenetProvider, len(next.Usenet.Providers))
 		for i, p := range next.Usenet.Providers {
@@ -241,6 +249,12 @@ func (e *placeholderErrors) unredactOpenSubtitles(next, prev config.OpenSubtitle
 	next.APIKey = e.restore("openSubtitles.apiKey", next.APIKey, prev.APIKey, true)
 	bound := strings.TrimSpace(next.Username) == strings.TrimSpace(prev.Username)
 	next.Password = e.restore("openSubtitles.password", next.Password, prev.Password, bound)
+	return next
+}
+
+func (e *placeholderErrors) unredactArr(next, prev config.Arr) config.Arr {
+	next.Radarr.APIKey = e.restore("arr.radarr.apiKey", next.Radarr.APIKey, prev.Radarr.APIKey, next.Radarr.URL == prev.Radarr.URL)
+	next.Sonarr.APIKey = e.restore("arr.sonarr.apiKey", next.Sonarr.APIKey, prev.Sonarr.APIKey, next.Sonarr.URL == prev.Sonarr.URL)
 	return next
 }
 

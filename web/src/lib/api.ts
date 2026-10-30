@@ -311,6 +311,8 @@ export const api = {
   llmModels: (cfg: EtherConfig["llm"], signal?: AbortSignal) =>
     post<{ models: LLMModel[]; error?: string }>("/llm/models", cfg, signal),
   testTrakt: (cfg: EtherConfig["trakt"]) => post<TestResult>("/test/trakt", cfg),
+  testArr: (kind: "radarr" | "sonarr", instance: EtherConfig["arr"]["radarr"]) =>
+    post<TestResult>("/test/arr", { kind, instance }),
 
   // ---- Built-in indexer sites ------------------------------------------------------
   sites: {

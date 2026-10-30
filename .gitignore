@@ -21,5 +21,6 @@ node_modules/
 !/THIRD_PARTY_NOTICES.md
 !/docs/install.md
 !/docs/user-guide.md
+!/docs/ARR_LOCAL.md
 !/packaging/community/README.md
 !/release-notes/*.md
