@@ -85,7 +85,7 @@ export function ArrSettings({ value, onChange, errors }: Props) {
                     value={m.arrPrefix}
                     onChange={(e) => {
                       const pathMaps = [...(value.pathMaps ?? [])];
-                      pathMaps[i] = { ...pathMaps[i], arrPrefix: e.target.value };
+                      pathMaps[i] = { ...m, arrPrefix: e.target.value };
                       set({ pathMaps });
                     }}
                   />
@@ -96,7 +96,7 @@ export function ArrSettings({ value, onChange, errors }: Props) {
                     value={m.localPrefix}
                     onChange={(e) => {
                       const pathMaps = [...(value.pathMaps ?? [])];
-                      pathMaps[i] = { ...pathMaps[i], localPrefix: e.target.value };
+                      pathMaps[i] = { ...m, localPrefix: e.target.value };
                       set({ pathMaps });
                     }}
                   />
