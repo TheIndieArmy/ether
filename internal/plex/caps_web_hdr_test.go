@@ -65,10 +65,9 @@ func TestWebHDRExplicitDenialToneMaps(t *testing.T) {
 	}
 }
 
-// Affirmative hevc in profile-extra without an HDR denial → remux (video copy).
-// Matches observed PMS Firefox/Chrome: HEVC decode advertised → Direct Stream
-// HDR-tagged bitstreams (display may still SDR tone-map locally).
-func TestWebHDRAffirmativeHEVCRemuxes(t *testing.T) {
+// HEVC listed without an affirmative 10-bit/PQ claim must not promote HDR10
+// (Braedon #136: hevc alone ≠ HDR10). Codec support stays independent.
+func TestWebHDRHEVCAloneDoesNotPromoteHDR10(t *testing.T) {
 	for _, tc := range []struct {
 		name, platform, extra string
 	}{
@@ -85,13 +84,51 @@ func TestWebHDRAffirmativeHEVCRemuxes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			caps, d := webDecide(t, "Plex Web", tc.platform, tc.extra)
-			if !caps.HDR10 || !caps.SupportsVideo("hevc") {
-				t.Fatalf("expected HEVC+HDR10 promotion: %+v", caps)
+			if !caps.SupportsVideo("hevc") {
+				t.Fatalf("expected hevc listed: %+v", caps)
 			}
-			if !d.VideoCopy || d.ToneMap {
-				t.Fatalf("expected video-copy Direct Stream, got %+v", d)
+			if caps.HDR10 || d.VideoCopy || !d.ToneMap {
+				t.Fatalf("hevc alone must tone-map HDR10: caps=%+v decision=%+v", caps, d)
 			}
 		})
+	}
+}
+
+// Sanitized PMS Firefox Ghostbusters (2026-10-30) profile augmentation that
+// Direct Streamed HDR10 HEVC (video copy, audio AAC). Affirmative signals:
+// bitDepth upperBound=10 and colorTrc match list including smpte2084.
+const pmsFirefoxHDR10Extra = "add-limitation(scope=videoCodec&scopeName=hevc&type=upperBound&name=video.width&value=4096&replace=true)" +
+	"+add-limitation(scope=videoCodec&scopeName=hevc&type=upperBound&name=video.height&value=2160&replace=true)" +
+	"+add-limitation(scope=videoCodec&scopeName=hevc&type=upperBound&name=video.bitDepth&value=10&replace=true)" +
+	"+append-transcode-target-codec(type=videoProfile&context=streaming&protocol=dash&videoCodec=hevc)" +
+	"+add-limitation(scope=videoTranscodeTarget&scopeName=hevc&scopeType=videoCodec&context=streaming&protocol=dash&type=match&name=video.colorTrc&list=bt709|bt470m|bt470bg|smpte170m|smpte240m|bt2020-10|smpte2084&isRequired=false)" +
+	"+append-transcode-target-codec(type=videoProfile&context=streaming&videoCodec=h264%2Chevc&audioCodec=aac&protocol=dash)"
+
+func TestWebHDRPMSFirefoxAffirmativeRemuxes(t *testing.T) {
+	caps, d := webDecide(t, "Plex Web", "Firefox", pmsFirefoxHDR10Extra)
+	if !caps.HDR10 || !caps.SupportsVideo("hevc") {
+		t.Fatalf("expected HEVC+HDR10 from PMS Firefox signals: %+v", caps)
+	}
+	if !d.VideoCopy || d.ToneMap {
+		t.Fatalf("expected video-copy Direct Stream, got %+v", d)
+	}
+}
+
+func TestWebHDRBitDepth10AloneRemuxes(t *testing.T) {
+	extra := "append-transcode-target-codec(type=videoProfile&context=streaming&protocol=dash&videoCodec=hevc)" +
+		"+add-limitation(scope=videoCodec&scopeName=hevc&type=upperBound&name=video.bitDepth&value=10&replace=true)"
+	caps, d := webDecide(t, "Plex Web", "Firefox", extra)
+	if !caps.HDR10 || !d.VideoCopy || d.ToneMap {
+		t.Fatalf("bitDepth=10 with hevc should remux: caps=%+v decision=%+v", caps, d)
+	}
+}
+
+func TestWebHDRColorTrcPQAloneRemuxes(t *testing.T) {
+	extra := "append-transcode-target-codec(type=videoProfile&context=streaming&protocol=dash&videoCodec=hevc)" +
+		"+add-limitation(scope=videoTranscodeTarget&scopeName=hevc&scopeType=videoCodec&type=match&name=video.colorTrc&list=bt709|smpte2084&isRequired=false)"
+	caps, d := webDecide(t, "Plex Web", "Chrome", extra)
+	if !caps.HDR10 || !d.VideoCopy || d.ToneMap {
+		t.Fatalf("smpte2084 allow-list with hevc should remux: caps=%+v decision=%+v", caps, d)
 	}
 }
 

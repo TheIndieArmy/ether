@@ -83,7 +83,7 @@ var (
 // Base caps stay conservative: only Safari claims HEVC+HDR10 by default.
 // Chromium may list HEVC without HDR10; Firefox lists neither. Plex Web may
 // still promote HDR10 remux when profile-extra affirmatively lists hevc and
-// does not deny 10-bit/PQ (see promoteWebHDRFromProfile). Audio stays
+// also claims 10-bit and/or PQ (see promoteWebHDRFromProfile). Audio stays
 // conservative (no EAC3 on Chrome/Firefox) so incompatible soundtracks remux
 // to AAC.
 func browserCaps(platform string) baseCaps {
@@ -197,50 +197,83 @@ func (pr *Request) ClientCaps(remoteMaxKbps int) core.ClientCaps {
 	return c
 }
 
-// profileExtraEvidence records affirmative codec claims and HDR denials from
-// X-Plex-Client-Profile-Extra. Omission is not support: only verbs that list
-// hevc count, and HDR-denying limitations block remux promotion.
+// profileExtraEvidence records affirmative codec/HDR claims and HDR denials
+// from X-Plex-Client-Profile-Extra. Omission is not support: listing hevc
+// alone never implies HDR10 (Braedon review of #136).
 type profileExtraEvidence struct {
-	affirmativeHEVC bool
-	hdrDenied       bool
+	affirmativeHEVC  bool
+	affirmativeHDR10 bool // bitDepth≥10 and/or colorTrc allow-list includes smpte2084
+	hdrDenied        bool
 }
 
 // promoteWebHDRFromProfile enables HDR10 remux for Plex Web when profile-extra
-// affirmatively listed hevc and did not deny 10-bit/PQ. This matches observed
-// PMS behavior on modern Firefox/Chrome (HEVC decode → Direct Stream HDR
-// tagged bitstreams; the display may still tone-map). Scoped to Plex Web so
-// other products keep their product-base HDR caps. Browser name alone never
-// promotes.
+// affirmatively listed hevc and also claimed 10-bit/PQ, with no HDR denial.
+// Matches observed PMS Firefox Direct Stream of HDR10 (video copy): the
+// client sent hevc targets plus video.bitDepth upperBound=10 and a colorTrc
+// match list including smpte2084 — not hevc alone, and not "absence of
+// denial." Scoped to Plex Web; browser name alone never promotes.
 func promoteWebHDRFromProfile(c *core.ClientCaps, product string, ev profileExtraEvidence) {
 	if !strings.Contains(strings.ToLower(product), "plex web") {
 		return
 	}
-	if !ev.affirmativeHEVC || ev.hdrDenied {
+	if ev.affirmativeHEVC {
+		c.VideoCodecs = addUnique(c.VideoCodecs, "hevc")
+	}
+	if !ev.affirmativeHEVC || !ev.affirmativeHDR10 || ev.hdrDenied {
 		return
 	}
-	c.VideoCodecs = addUnique(c.VideoCodecs, "hevc")
 	c.HDR10 = true
 }
 
 // limitationDeniesHDR reports profile-extra limits that mean this client
 // cannot take HEVC HDR10 (8-bit cap or explicit PQ rejection).
 func limitationDeniesHDR(a map[string]string) bool {
-	if a["scope"] != "videoCodec" {
-		return false
-	}
 	sn := normalizeCodec(a["scopeName"])
 	if sn != "hevc" && sn != "av1" && sn != "*" && sn != "" {
 		return false
 	}
-	name, typ, val := a["name"], a["type"], a["value"]
-	if name == "video.bitDepth" && typ == "upperBound" {
-		n, err := strconv.Atoi(val)
-		return err == nil && n < 10
+	name, typ := a["name"], a["type"]
+	val := limitationValue(a)
+	switch a["scope"] {
+	case "videoCodec":
+		if name == "video.bitDepth" && typ == "upperBound" {
+			n, err := strconv.Atoi(val)
+			return err == nil && n < 10
+		}
+		if name == "video.colorTrc" && typ == "notMatch" {
+			return strings.Contains(val, "smpte2084")
+		}
 	}
-	if name == "video.colorTrc" && typ == "notMatch" {
+	return false
+}
+
+// limitationAffirmsHDR10 reports profile-extra limits that affirmatively claim
+// 10-bit and/or PQ (HDR10) support — the signals PMS Firefox sent when it
+// Direct Streamed an HDR10 HEVC remux.
+func limitationAffirmsHDR10(a map[string]string) bool {
+	sn := normalizeCodec(a["scopeName"])
+	if sn != "hevc" && sn != "av1" && sn != "*" && sn != "" {
+		return false
+	}
+	name, typ, scope := a["name"], a["type"], a["scope"]
+	val := limitationValue(a)
+	if name == "video.bitDepth" && typ == "upperBound" && scope == "videoCodec" {
+		n, err := strconv.Atoi(val)
+		return err == nil && n >= 10
+	}
+	// PMS: scope=videoTranscodeTarget&type=match&name=video.colorTrc&list=...|smpte2084
+	if name == "video.colorTrc" && typ == "match" && (scope == "videoCodec" || scope == "videoTranscodeTarget") {
 		return strings.Contains(val, "smpte2084")
 	}
 	return false
+}
+
+// limitationValue prefers list= (PMS colorTrc allow-lists) then value=.
+func limitationValue(a map[string]string) string {
+	if v := a["list"]; v != "" {
+		return v
+	}
+	return a["value"]
 }
 
 // Directive is one parsed X-Plex-Client-Profile-Extra directive, e.g.
@@ -280,7 +313,11 @@ func ParseProfileExtra(s string) []Directive {
 			if !ok {
 				continue
 			}
-			args[strings.TrimSpace(k)] = strings.TrimSpace(v)
+			v = strings.TrimSpace(v)
+			if dec, err := url.QueryUnescape(v); err == nil {
+				v = dec
+			}
+			args[strings.TrimSpace(k)] = v
 		}
 		if verb != "" {
 			out = append(out, Directive{Verb: verb, Args: args})
@@ -369,6 +406,9 @@ func applyProfileExtra(c *core.ClientCaps, extra string) profileExtraEvidence {
 		case "add-limitation":
 			if limitationDeniesHDR(a) {
 				ev.hdrDenied = true
+			}
+			if limitationAffirmsHDR10(a) {
+				ev.affirmativeHDR10 = true
 			}
 			applyLimitation(c, a)
 		}
