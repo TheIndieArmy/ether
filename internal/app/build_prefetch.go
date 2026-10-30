@@ -20,7 +20,7 @@ func (a *App) buildPrefetch(ctx context.Context, cfg config.Config) error {
 		prewarmer = pw
 	}
 	a.prefetch, err = prefetch.New(prefetch.Deps{
-		Catalog: a.catalog, Resolver: a.resolver, Engine: a.media,
+		Catalog: a.catalog, Resolver: a.resolver, Engine: a.playMedia,
 		State: a.state, Auth: a.users, Hints: a.playback,
 		Logger:   log.With("component", "prefetch"),
 		PostPlay: a.personalize, Prewarmer: prewarmer, Markers: a.markers,

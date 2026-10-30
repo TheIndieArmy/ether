@@ -15,6 +15,9 @@ const (
 	// through the addon owner's own debrid account), read with HTTP range
 	// requests. It needs no debrid account in Ether (additive).
 	ProtocolHTTP = "http"
+	// ProtocolLocal is a file already on this host (Arr hasFile + path map),
+	// opened directly rather than fetched through Usenet/debrid.
+	ProtocolLocal = "local"
 )
 
 // ReleaseTarget is the episode wanted from a multi-file release such as a

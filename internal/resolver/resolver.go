@@ -1147,6 +1147,11 @@ func (s *Service) rejectReason(rel core.Release, t *core.Title, sreq core.Search
 	if s.recentlyFailedHealth(rel.ID) {
 		return "source recently failed health check; retrying later"
 	}
+	// Arr local files are already on disk for this title; skip indexer-style
+	// quality/identity gates (no release name to parse for height/episode).
+	if rel.Protocol == core.ProtocolLocal {
+		return ""
+	}
 	lowerName := strings.ToLower(rel.Name)
 	for _, term := range rcfg.BlockedTerms {
 		if term != "" && strings.Contains(lowerName, strings.ToLower(term)) {

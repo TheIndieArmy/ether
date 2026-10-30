@@ -37,10 +37,12 @@ type Status struct {
 
 // MediaFile is a resolvable Arr media file path.
 type MediaFile struct {
-	Title   string `json:"title"`
-	ArrPath string `json:"arrPath"`
-	HasFile bool   `json:"hasFile"`
-	ArrID   int    `json:"arrId,omitempty"`
+	Title     string `json:"title"`
+	ArrPath   string `json:"arrPath"`
+	HasFile   bool   `json:"hasFile"`
+	ArrID     int    `json:"arrId,omitempty"`
+	Kind      string `json:"kind,omitempty"` // "radarr" or "sonarr"
+	EpisodeID int    `json:"episodeId,omitempty"`
 }
 
 // New builds a client. kind is "radarr" or "sonarr".
@@ -120,7 +122,80 @@ func (c *Client) MovieFileByTMDB(ctx context.Context, tmdbID int) (*MediaFile, e
 		if !m.HasFile || m.MovieFile == nil || m.MovieFile.Path == "" {
 			continue
 		}
-		return &MediaFile{Title: m.Title, ArrPath: m.MovieFile.Path, HasFile: true, ArrID: m.ID}, nil
+		return &MediaFile{Title: m.Title, ArrPath: m.MovieFile.Path, HasFile: true, ArrID: m.ID, Kind: "radarr"}, nil
+	}
+	return nil, nil
+}
+
+// findSeriesID looks up a Sonarr series by TVDB and/or TMDB id.
+// okTitle is unused by callers today; kept for future matching hints.
+func (c *Client) findSeriesID(ctx context.Context, tvdb, tmdb int64) (seriesID int, title string, err error) {
+	if c.Kind != "sonarr" {
+		return 0, "", fmt.Errorf("findSeriesID requires sonarr")
+	}
+	try := func(path string) (int, string, error) {
+		var series []struct {
+			ID    int    `json:"id"`
+			Title string `json:"title"`
+		}
+		if err := c.getJSON(ctx, path, &series); err != nil {
+			return 0, "", err
+		}
+		if len(series) == 0 {
+			return 0, "", nil
+		}
+		return series[0].ID, series[0].Title, nil
+	}
+	if tvdb > 0 {
+		if id, title, err := try("/api/v3/series?tvdbId=" + strconv.FormatInt(tvdb, 10)); err != nil || id > 0 {
+			return id, title, err
+		}
+	}
+	if tmdb > 0 {
+		return try("/api/v3/series?tmdbId=" + strconv.FormatInt(tmdb, 10))
+	}
+	return 0, "", nil
+}
+
+// EpisodeFileByShow returns the Sonarr episode file for a show episode when hasFile.
+func (c *Client) EpisodeFileByShow(ctx context.Context, tvdb, tmdb int64, season, episode int) (*MediaFile, error) {
+	if c.Kind != "sonarr" {
+		return nil, fmt.Errorf("EpisodeFileByShow requires sonarr")
+	}
+	if season <= 0 || episode <= 0 {
+		return nil, nil
+	}
+	seriesID, seriesTitle, err := c.findSeriesID(ctx, tvdb, tmdb)
+	if err != nil || seriesID == 0 {
+		return nil, err
+	}
+	var eps []struct {
+		ID            int    `json:"id"`
+		Title         string `json:"title"`
+		SeasonNumber  int    `json:"seasonNumber"`
+		EpisodeNumber int    `json:"episodeNumber"`
+		HasFile       bool   `json:"hasFile"`
+		EpisodeFile   *struct {
+			Path string `json:"path"`
+		} `json:"episodeFile"`
+	}
+	q := "/api/v3/episode?seriesId=" + strconv.Itoa(seriesID) +
+		"&seasonNumber=" + strconv.Itoa(season)
+	if err := c.getJSON(ctx, q, &eps); err != nil {
+		return nil, err
+	}
+	for _, ep := range eps {
+		if ep.EpisodeNumber != episode || !ep.HasFile || ep.EpisodeFile == nil || ep.EpisodeFile.Path == "" {
+			continue
+		}
+		title := ep.Title
+		if title == "" {
+			title = seriesTitle
+		}
+		return &MediaFile{
+			Title: title, ArrPath: ep.EpisodeFile.Path, HasFile: true,
+			ArrID: seriesID, Kind: "sonarr", EpisodeID: ep.ID,
+		}, nil
 	}
 	return nil, nil
 }

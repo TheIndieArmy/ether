@@ -19,6 +19,7 @@ import (
 	"github.com/braedonsaunders/ether/internal/catalog"
 	"github.com/braedonsaunders/ether/internal/cluster"
 	"github.com/braedonsaunders/ether/internal/collections"
+	"github.com/braedonsaunders/ether/internal/arr"
 	"github.com/braedonsaunders/ether/internal/config"
 	"github.com/braedonsaunders/ether/internal/debrid"
 	"github.com/braedonsaunders/ether/internal/episodeorder"
@@ -140,7 +141,11 @@ type App struct {
 	debrid     *debrid.Service
 	media      *debrid.Engine  // core.Engine + core.HealthChecker over engine
 	sources    *debrid.Indexer // core.Indexer over indexers
-	resolver   *resolver.Service
+	// playMedia / playSources are the outermost wrappers (Arr local → debrid).
+	// Playback, resolver, and prefetch open/fetch through these.
+	playMedia   *arr.Engine
+	playSources *arr.Indexer
+	resolver    *resolver.Service
 	transcoder *transcode.Manager
 	load       *sysload.Sampler // machine load for the Overview
 	playback   *playback.Manager
