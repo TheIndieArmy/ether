@@ -326,6 +326,43 @@ function mergeSection(base: EtherConfig, key: Service["configKey"], section: Obj
         },
       };
     }
+    case "arr": {
+      const prev = base.arr ?? {
+        enabled: false,
+        radarr: { url: "", apiKey: "", qualityProfileId: 0, rootFolderPath: "" },
+        sonarr: { url: "", apiKey: "", qualityProfileId: 0, rootFolderPath: "" },
+        pathMaps: null,
+      };
+      const radarr = (section.radarr as Obj | undefined) ?? {};
+      const sonarr = (section.sonarr as Obj | undefined) ?? {};
+      return {
+        ...base,
+        arr: {
+          enabled: boolField(section, "enabled", prev.enabled),
+          radarr: {
+            url: textField(radarr, "url", prev.radarr.url),
+            apiKey: textField(radarr, "apiKey", prev.radarr.apiKey),
+            qualityProfileId:
+              typeof radarr.qualityProfileId === "number"
+                ? radarr.qualityProfileId
+                : prev.radarr.qualityProfileId,
+            rootFolderPath: textField(radarr, "rootFolderPath", prev.radarr.rootFolderPath),
+          },
+          sonarr: {
+            url: textField(sonarr, "url", prev.sonarr.url),
+            apiKey: textField(sonarr, "apiKey", prev.sonarr.apiKey),
+            qualityProfileId:
+              typeof sonarr.qualityProfileId === "number"
+                ? sonarr.qualityProfileId
+                : prev.sonarr.qualityProfileId,
+            rootFolderPath: textField(sonarr, "rootFolderPath", prev.sonarr.rootFolderPath),
+          },
+          pathMaps: Array.isArray(section.pathMaps)
+            ? (section.pathMaps as ArrConfig["pathMaps"])
+            : prev.pathMaps,
+        },
+      };
+    }
   }
 }
 
