@@ -81,10 +81,11 @@ var (
 
 // browserCaps is Plex Web, which depends on the browser in X-Plex-Platform.
 // Base caps stay conservative: only Safari claims HEVC+HDR10 by default.
-// Chromium may list HEVC without HDR10; Firefox lists neither. Profile-extra
-// can add codecs via applyProfileExtra, but hevc alone never implies HDR10.
-// Audio stays conservative (no EAC3 on Chrome/Firefox) so incompatible
-// soundtracks remux to AAC.
+// Chromium may list HEVC without HDR10; Firefox lists neither. Plex Web may
+// still promote HDR10 remux when profile-extra affirmatively lists hevc and
+// does not deny 10-bit/PQ (see promoteWebHDRFromProfile). Audio stays
+// conservative (no EAC3 on Chrome/Firefox) so incompatible soundtracks remux
+// to AAC.
 func browserCaps(platform string) baseCaps {
 	p := strings.ToLower(platform)
 	c := baseCaps{
@@ -187,12 +188,59 @@ func (pr *Request) ClientCaps(remoteMaxKbps int) core.ClientCaps {
 		applyLegacyCapabilities(&c, pr.ClientCapabilities)
 	}
 	if pr.ProfileExtra != "" {
-		applyProfileExtra(&c, pr.ProfileExtra)
+		ev := applyProfileExtra(&c, pr.ProfileExtra)
+		promoteWebHDRFromProfile(&c, pr.Product, ev)
 	}
 	if c.Remote && remoteMaxKbps > 0 && (c.MaxBitrateKbps == 0 || c.MaxBitrateKbps > remoteMaxKbps) {
 		c.MaxBitrateKbps = remoteMaxKbps
 	}
 	return c
+}
+
+// profileExtraEvidence records affirmative codec claims and HDR denials from
+// X-Plex-Client-Profile-Extra. Omission is not support: only verbs that list
+// hevc count, and HDR-denying limitations block remux promotion.
+type profileExtraEvidence struct {
+	affirmativeHEVC bool
+	hdrDenied       bool
+}
+
+// promoteWebHDRFromProfile enables HDR10 remux for Plex Web when profile-extra
+// affirmatively listed hevc and did not deny 10-bit/PQ. This matches observed
+// PMS behavior on modern Firefox/Chrome (HEVC decode → Direct Stream HDR
+// tagged bitstreams; the display may still tone-map). Scoped to Plex Web so
+// other products keep their product-base HDR caps. Browser name alone never
+// promotes.
+func promoteWebHDRFromProfile(c *core.ClientCaps, product string, ev profileExtraEvidence) {
+	if !strings.Contains(strings.ToLower(product), "plex web") {
+		return
+	}
+	if !ev.affirmativeHEVC || ev.hdrDenied {
+		return
+	}
+	c.VideoCodecs = addUnique(c.VideoCodecs, "hevc")
+	c.HDR10 = true
+}
+
+// limitationDeniesHDR reports profile-extra limits that mean this client
+// cannot take HEVC HDR10 (8-bit cap or explicit PQ rejection).
+func limitationDeniesHDR(a map[string]string) bool {
+	if a["scope"] != "videoCodec" {
+		return false
+	}
+	sn := normalizeCodec(a["scopeName"])
+	if sn != "hevc" && sn != "av1" && sn != "*" && sn != "" {
+		return false
+	}
+	name, typ, val := a["name"], a["type"], a["value"]
+	if name == "video.bitDepth" && typ == "upperBound" {
+		n, err := strconv.Atoi(val)
+		return err == nil && n < 10
+	}
+	if name == "video.colorTrc" && typ == "notMatch" {
+		return strings.Contains(val, "smpte2084")
+	}
+	return false
 }
 
 // Directive is one parsed X-Plex-Client-Profile-Extra directive, e.g.
@@ -286,7 +334,8 @@ func addUnique(xs []string, add ...string) []string {
 	return xs
 }
 
-func applyProfileExtra(c *core.ClientCaps, extra string) {
+func applyProfileExtra(c *core.ClientCaps, extra string) profileExtraEvidence {
+	var ev profileExtraEvidence
 	for _, d := range ParseProfileExtra(extra) {
 		a := d.Args
 		switch d.Verb {
@@ -294,7 +343,11 @@ func applyProfileExtra(c *core.ClientCaps, extra string) {
 			if t := a["type"]; t != "" && t != "videoProfile" {
 				continue
 			}
-			c.VideoCodecs = addUnique(c.VideoCodecs, splitList(a["videoCodec"])...)
+			codecs := splitList(a["videoCodec"])
+			if slices.Contains(codecs, "hevc") {
+				ev.affirmativeHEVC = true
+			}
+			c.VideoCodecs = addUnique(c.VideoCodecs, codecs...)
 			c.AudioCodecs = addUnique(c.AudioCodecs, splitList(a["audioCodec"])...)
 			if ct := a["container"]; ct != "" {
 				c.Containers = addUnique(c.Containers, splitList(ct)...)
@@ -306,13 +359,21 @@ func applyProfileExtra(c *core.ClientCaps, extra string) {
 			if t := a["type"]; t != "" && t != "videoProfile" {
 				continue
 			}
-			c.VideoCodecs = addUnique(c.VideoCodecs, splitList(a["videoCodec"])...)
+			codecs := splitList(a["videoCodec"])
+			if slices.Contains(codecs, "hevc") {
+				ev.affirmativeHEVC = true
+			}
+			c.VideoCodecs = addUnique(c.VideoCodecs, codecs...)
 			c.AudioCodecs = addUnique(c.AudioCodecs, splitList(a["audioCodec"])...)
 			c.Containers = addUnique(c.Containers, splitList(a["container"])...)
 		case "add-limitation":
+			if limitationDeniesHDR(a) {
+				ev.hdrDenied = true
+			}
 			applyLimitation(c, a)
 		}
 	}
+	return ev
 }
 
 func applyLimitation(c *core.ClientCaps, a map[string]string) {

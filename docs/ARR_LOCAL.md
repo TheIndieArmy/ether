@@ -32,3 +32,9 @@ Ship only to **origin** (`TheIndieArmy/ether`), not upstream PRs, until ready.
 - Opt-in / wire `EnsureMissing` on Play + progress UX when Arr is searching.
 - Add-new-title flow (today `Ensure` only searches titles already in Arr).
 - Rebuild embedded `internal/admin/dist` when shipping a binary (`cd web && npm run build` per upstream docs).
+
+## Web HDR remux (fork test)
+
+Upstream [#136](https://github.com/braedonsaunders/ether/pull/136) rejected browser-name HDR defaults. Branch `feat/web-hdr-evidence` (PR into `feat/arr-local`) promotes **Plex Web** HDR10 remux only when `X-Plex-Client-Profile-Extra` affirmatively lists `hevc` and does not deny 10-bit/PQ — aligned with observed PMS Firefox Direct Stream of HDR once HEVC decode is advertised.
+
+To capture evidence for a future upstream PR: play Arr 4K HDR in Firefox with debug logging and save the decision line’s `profileExtra=` (sanitize tokens). A side-by-side PMS request/decision capture remains the bar Braedon asked for.

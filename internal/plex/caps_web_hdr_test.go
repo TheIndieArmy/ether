@@ -37,7 +37,7 @@ func TestWebHDRUnknownH264OnlyToneMaps(t *testing.T) {
 		t.Fatalf("Firefox: want tone-map, got %+v", firefoxDec)
 	}
 
-	// Chrome lists hevc in base caps, but omission must not set HDR10.
+	// Chrome lists hevc in base caps, but h264-only target must not promote HDR10.
 	chromeCaps, chromeDec := webDecide(t, "Plex Web", "Chrome", extra)
 	if !chromeCaps.SupportsVideo("hevc") {
 		t.Fatalf("Chrome still lists base hevc: %+v", chromeCaps)
@@ -48,24 +48,27 @@ func TestWebHDRUnknownH264OnlyToneMaps(t *testing.T) {
 }
 
 func TestWebHDRExplicitDenialToneMaps(t *testing.T) {
-	// Safari base claims HDR10; denial must clear it even with hevc listed.
 	base := "add-direct-play-profile(type=videoProfile&container=mkv&videoCodec=hevc&audioCodec=aac)"
-	for _, deny := range []string{
-		"+add-limitation(scope=videoCodec&scopeName=hevc&type=upperBound&name=video.bitDepth&value=8)",
-		"+add-limitation(scope=videoCodec&scopeName=hevc&type=notMatch&name=video.colorTrc&value=smpte2084)",
-	} {
-		caps, d := webDecide(t, "Plex Web", "Safari", base+deny)
-		if caps.HDR10 || d.VideoCopy || !d.ToneMap {
-			t.Fatalf("HDR denial ignored: caps=%+v decision=%+v", caps, d)
-		}
-		if !caps.SupportsVideo("hevc") {
-			t.Fatalf("hevc should remain listed after denial: %+v", caps)
+	for _, platform := range []string{"Firefox", "Chrome", "Safari"} {
+		for _, deny := range []string{
+			"+add-limitation(scope=videoCodec&scopeName=hevc&type=upperBound&name=video.bitDepth&value=8)",
+			"+add-limitation(scope=videoCodec&scopeName=hevc&type=notMatch&name=video.colorTrc&value=smpte2084)",
+		} {
+			caps, d := webDecide(t, "Plex Web", platform, base+deny)
+			if caps.HDR10 || d.VideoCopy || !d.ToneMap {
+				t.Fatalf("%s HDR denial ignored: caps=%+v decision=%+v", platform, caps, d)
+			}
+			if !caps.SupportsVideo("hevc") {
+				t.Fatalf("%s: hevc should remain listed after denial: %+v", platform, caps)
+			}
 		}
 	}
 }
 
-// HEVC listed without an HDR signal must tone-map: HEVC ≠ HDR10.
-func TestWebHDRHEVCWithoutHDREvidenceToneMaps(t *testing.T) {
+// Affirmative hevc in profile-extra without an HDR denial → remux (video copy).
+// Matches observed PMS Firefox/Chrome: HEVC decode advertised → Direct Stream
+// HDR-tagged bitstreams (display may still SDR tone-map locally).
+func TestWebHDRAffirmativeHEVCRemuxes(t *testing.T) {
 	for _, tc := range []struct {
 		name, platform, extra string
 	}{
@@ -82,14 +85,11 @@ func TestWebHDRHEVCWithoutHDREvidenceToneMaps(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			caps, d := webDecide(t, "Plex Web", tc.platform, tc.extra)
-			if !caps.SupportsVideo("hevc") {
-				t.Fatalf("expected hevc listed: %+v", caps)
+			if !caps.HDR10 || !caps.SupportsVideo("hevc") {
+				t.Fatalf("expected HEVC+HDR10 promotion: %+v", caps)
 			}
-			if caps.HDR10 {
-				t.Fatalf("hevc alone must not claim HDR10: %+v", caps)
-			}
-			if d.VideoCopy || !d.ToneMap {
-				t.Fatalf("HDR unknown: want tone-map, got %+v", d)
+			if !d.VideoCopy || d.ToneMap {
+				t.Fatalf("expected video-copy Direct Stream, got %+v", d)
 			}
 		})
 	}
@@ -103,5 +103,20 @@ func TestWebHDRNoProfileExtraDoesNotPromote(t *testing.T) {
 	caps = (&Request{Product: "Plex Web", Platform: "Firefox", Device: "Windows"}).ClientCaps(0)
 	if caps.HDR10 || caps.SupportsVideo("hevc") {
 		t.Fatalf("Firefox without profile-extra must stay conservative: %+v", caps)
+	}
+}
+
+// Promotion is Plex Web only — desktop/other products keep product-base HDR.
+func TestWebHDRPromotionScopedToPlexWeb(t *testing.T) {
+	extra := "add-direct-play-profile(type=videoProfile&container=mkv&videoCodec=hevc&audioCodec=aac)"
+	caps := (&Request{Product: "Plex for Windows", Platform: "Windows", Device: "standalone", ProfileExtra: extra}).ClientCaps(0)
+	// Desktop already has HDR10 from product base; ensure we did not rely on web promotion alone.
+	if !caps.HDR10 {
+		t.Fatalf("desktop base should keep HDR10: %+v", caps)
+	}
+	// A non-web product that does not claim HDR in base must not gain it from hevc listing.
+	caps = (&Request{Product: "Unknown Thing", Platform: "Linux", Device: "box", ProfileExtra: extra}).ClientCaps(0)
+	if caps.HDR10 {
+		t.Fatalf("non-web product must not gain HDR10 from hevc profile-extra: %+v", caps)
 	}
 }
